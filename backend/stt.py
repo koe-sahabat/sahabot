@@ -1,23 +1,35 @@
-from faster_whisper import WhisperModel
-from config import WHISPER_MODEL
+from deepgram import DeepgramClient, PrerecordedOptions
+from config import DEEPGRAM_API_KEY
 
-_model: WhisperModel | None = None
-
-
-def _get_model() -> WhisperModel:
-    global _model
-    if _model is None:
-        _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
-    return _model
+_client: DeepgramClient | None = None
 
 
-def transcribe(audio_path: str) -> str:
-    """Transcribe an audio file to text using faster-whisper.
+def _get_client() -> DeepgramClient:
+    global _client
+    if _client is None:
+        _client = DeepgramClient(DEEPGRAM_API_KEY)
+    return _client
 
-    Accepts any format ffmpeg can decode (webm, wav, mp3, ogg, etc.).
+
+async def transcribe(audio_bytes: bytes) -> str:
+    """Transcribe audio bytes using Deepgram's cloud API.
+
+    Accepts any common format (webm, wav, mp3, ogg, etc.).
     Returns the transcribed text, or empty string if nothing detected.
     """
-    model = _get_model()
-    segments, _info = model.transcribe(audio_path, beam_size=5)
-    text = " ".join(segment.text for segment in segments)
-    return text.strip()
+    client = _get_client()
+
+    source = {"buffer": audio_bytes, "mimetype": "audio/webm"}
+    options = PrerecordedOptions(
+        model="nova-2",
+        smart_format=True,
+        language="en",
+    )
+
+    response = await client.listen.asyncrest.v("1").transcribe_file(source, options)
+    transcript = (
+        response.results.channels[0].alternatives[0].transcript
+        if response.results.channels
+        else ""
+    )
+    return transcript.strip()

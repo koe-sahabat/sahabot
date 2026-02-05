@@ -4,9 +4,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
-# faster-whisper: "tiny" is fastest on RPi 5, "base" is more accurate
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 
 # edge-tts voice — see full list: edge-tts --list-voices
 TTS_VOICE = os.getenv("TTS_VOICE", "en-US-AriaNeural")
