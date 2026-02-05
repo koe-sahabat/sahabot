@@ -6,8 +6,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 
-# edge-tts voice — see full list: edge-tts --list-voices
-TTS_VOICE = os.getenv("TTS_VOICE", "en-US-AriaNeural")
+# Deepgram Aura TTS voice — see: https://developers.deepgram.com/docs/tts-models
+TTS_VOICE = os.getenv("TTS_VOICE", "aura-2-asteria-en")
 
 SYSTEM_PROMPT = """\
 You are SahaBot, a friendly and knowledgeable gallery usher robot. \

@@ -3,5 +3,4 @@ uvicorn[standard]
 websockets
 deepgram-sdk
 anthropic
-edge-tts
 python-dotenv

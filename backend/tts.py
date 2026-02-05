@@ -1,18 +1,26 @@
-import io
-import edge_tts
-from config import TTS_VOICE
+from deepgram import AsyncDeepgramClient
+from config import DEEPGRAM_API_KEY, TTS_VOICE
+
+_client: AsyncDeepgramClient | None = None
+
+
+def _get_client() -> AsyncDeepgramClient:
+    global _client
+    if _client is None:
+        _client = AsyncDeepgramClient(api_key=DEEPGRAM_API_KEY)
+    return _client
 
 
 async def synthesize(text: str) -> bytes:
-    """Convert text to speech using edge-tts.
+    """Convert text to speech using Deepgram Aura TTS.
 
     Returns raw mp3 audio bytes.
     """
-    communicate = edge_tts.Communicate(text, TTS_VOICE)
-    buffer = io.BytesIO()
+    client = _get_client()
 
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buffer.write(chunk["data"])
+    response = await client.speak.v1.audio.generate(
+        text=text,
+        model=TTS_VOICE,
+    )
 
-    return buffer.getvalue()
+    return response.stream.getvalue()
