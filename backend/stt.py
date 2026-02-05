@@ -1,4 +1,4 @@
-from deepgram import DeepgramClient, PrerecordedOptions
+from deepgram import DeepgramClient
 from config import DEEPGRAM_API_KEY
 
 _client: DeepgramClient | None = None
@@ -19,14 +19,13 @@ async def transcribe(audio_bytes: bytes) -> str:
     """
     client = _get_client()
 
-    source = {"buffer": audio_bytes, "mimetype": "audio/webm"}
-    options = PrerecordedOptions(
-        model="nova-2",
+    response = await client.listen.asyncrest.v("1").transcribe_file(
+        request=audio_bytes,
+        model="nova-3",
         smart_format=True,
         language="en",
     )
 
-    response = await client.listen.asyncrest.v("1").transcribe_file(source, options)
     transcript = (
         response.results.channels[0].alternatives[0].transcript
         if response.results.channels
