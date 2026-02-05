@@ -1,13 +1,13 @@
-from deepgram import DeepgramClient
+from deepgram import AsyncDeepgramClient
 from config import DEEPGRAM_API_KEY
 
-_client: DeepgramClient | None = None
+_client: AsyncDeepgramClient | None = None
 
 
-def _get_client() -> DeepgramClient:
+def _get_client() -> AsyncDeepgramClient:
     global _client
     if _client is None:
-        _client = DeepgramClient(DEEPGRAM_API_KEY)
+        _client = AsyncDeepgramClient(api_key=DEEPGRAM_API_KEY)
     return _client
 
 
@@ -19,7 +19,7 @@ async def transcribe(audio_bytes: bytes) -> str:
     """
     client = _get_client()
 
-    response = await client.listen.asyncrest.v("1").transcribe_file(
+    response = await client.listen.v1.media.transcribe_file(
         request=audio_bytes,
         model="nova-3",
         smart_format=True,
