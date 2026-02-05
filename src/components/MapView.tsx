@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Text, RoundedBox } from "@react-three/drei";
+import { OrbitControls, Html } from "@react-three/drei";
 import type { Station } from "../types";
 import { stations } from "../data/stations";
 import StationInfo from "./StationInfo";
@@ -21,14 +21,19 @@ function StationMarker({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const color = new THREE.Color(station.color);
-
   return (
     <group
       position={[station.position.x, 0.01, station.position.z]}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = "default";
       }}
     >
       {/* Base disc */}
@@ -37,114 +42,123 @@ function StationMarker({
         <meshStandardMaterial
           color={station.color}
           transparent
-          opacity={isSelected ? 0.35 : 0.15}
+          opacity={isSelected ? 0.4 : 0.18}
         />
       </mesh>
 
       {/* Pin body */}
       <mesh position={[0, 0.8, 0]}>
-        <cylinderGeometry args={[0.35, 0.45, 1.2, 16]} />
-        <meshStandardMaterial color={color} />
+        <cylinderGeometry args={[0.3, 0.4, 1.2, 16]} />
+        <meshStandardMaterial color={station.color} />
       </mesh>
 
       {/* Pin top sphere */}
       <mesh position={[0, 1.6, 0]}>
-        <sphereGeometry args={[0.5, 16, 16]} />
+        <sphereGeometry args={[0.45, 16, 16]} />
         <meshStandardMaterial
-          color={color}
-          emissive={color}
-          emissiveIntensity={isSelected ? 0.4 : 0.1}
+          color={station.color}
+          emissive={station.color}
+          emissiveIntensity={isSelected ? 0.5 : 0.15}
         />
       </mesh>
 
-      {/* Label */}
-      <Text
-        position={[0, 1.6, 0]}
-        fontSize={0.45}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-        font="https://fonts.gstatic.com/s/inter/v18/UcCo3FwrK3iLTcviYwY.woff2"
-        fontWeight={700}
-      >
-        {station.label}
-      </Text>
+      {/* Label number (HTML overlay - always renders) */}
+      <Html position={[0, 1.6, 0]} center distanceFactor={12}>
+        <div
+          style={{
+            color: "white",
+            fontWeight: 700,
+            fontSize: "14px",
+            fontFamily: "Inter, system-ui, sans-serif",
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          {station.label}
+        </div>
+      </Html>
 
-      {/* Station name (floating above) */}
-      <Text
-        position={[0, 2.5, 0]}
-        fontSize={0.35}
-        color="#1E293B"
-        anchorX="center"
-        anchorY="middle"
-        font="https://fonts.gstatic.com/s/inter/v18/UcCo3FwrK3iLTcviYwY.woff2"
-        fontWeight={600}
-      >
-        {station.name}
-      </Text>
+      {/* Station name floating above */}
+      <Html position={[0, 2.8, 0]} center distanceFactor={12}>
+        <div
+          style={{
+            color: "#1E293B",
+            fontWeight: 600,
+            fontSize: "13px",
+            fontFamily: "Inter, system-ui, sans-serif",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            userSelect: "none",
+            background: "rgba(255,255,255,0.85)",
+            padding: "2px 8px",
+            borderRadius: "6px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          }}
+        >
+          {station.name}
+        </div>
+      </Html>
     </group>
   );
 }
 
 /* ── Gallery Floor & Walls ────────────────────────────── */
 
+const wallSegments = [
+  // Outer walls
+  { position: [-9, 0.75, 0] as const, size: [0.15, 1.5, 16] as const },
+  { position: [9, 0.75, 0] as const, size: [0.15, 1.5, 16] as const },
+  { position: [0, 0.75, -8] as const, size: [18, 1.5, 0.15] as const },
+  { position: [-4, 0.75, 8] as const, size: [10, 1.5, 0.15] as const },
+  { position: [4, 0.75, 8] as const, size: [10, 1.5, 0.15] as const },
+  // Internal dividers
+  { position: [0, 0.6, -3] as const, size: [0.12, 1.2, 4] as const },
+  { position: [-3, 0.6, 2] as const, size: [6, 1.2, 0.12] as const },
+  { position: [3, 0.6, 2] as const, size: [6, 1.2, 0.12] as const },
+];
+
 function GalleryFloor() {
   return (
     <>
       {/* Main floor */}
-      <RoundedBox
-        args={[18, 0.15, 16]}
-        radius={0.3}
-        position={[0, -0.075, 0]}
-      >
-        <meshStandardMaterial color="#F8FAFC" />
-      </RoundedBox>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[18, 16]} />
+        <meshStandardMaterial color="#F1F5F9" side={THREE.DoubleSide} />
+      </mesh>
 
-      {/* Floor grid lines */}
+      {/* Floor grid */}
       <gridHelper
-        args={[18, 18, "#E2E8F0", "#F1F5F9"]}
-        position={[0, 0.01, 0]}
+        args={[18, 18, "#CBD5E1", "#E2E8F0"]}
+        position={[0, 0.005, 0]}
       />
 
       {/* Walls */}
       {wallSegments.map((wall, i) => (
-        <mesh key={i} position={wall.position as [number, number, number]}>
-          <boxGeometry
-            args={wall.size as [number, number, number]}
-          />
-          <meshStandardMaterial color="#E0E7FF" transparent opacity={0.7} />
+        <mesh key={i} position={[wall.position[0], wall.position[1], wall.position[2]]}>
+          <boxGeometry args={[wall.size[0], wall.size[1], wall.size[2]]} />
+          <meshStandardMaterial color="#C7D2FE" transparent opacity={0.6} />
         </mesh>
       ))}
 
-      {/* Entrance marker */}
-      <Text
-        position={[0, 0.1, 8.5]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.5}
-        color="#94A3B8"
-        anchorX="center"
-        anchorY="middle"
-        font="https://fonts.gstatic.com/s/inter/v18/UcCo3FwrK3iLTcviYwY.woff2"
-        fontWeight={500}
-      >
-        ENTRANCE
-      </Text>
+      {/* Entrance label (HTML overlay) */}
+      <Html position={[0, 0.15, 8.2]} center distanceFactor={14}>
+        <div
+          style={{
+            color: "#94A3B8",
+            fontWeight: 600,
+            fontSize: "12px",
+            fontFamily: "Inter, system-ui, sans-serif",
+            letterSpacing: "2px",
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          ENTRANCE
+        </div>
+      </Html>
     </>
   );
 }
-
-const wallSegments = [
-  // Outer walls
-  { position: [-9, 0.75, 0], size: [0.15, 1.5, 16] }, // left
-  { position: [9, 0.75, 0], size: [0.15, 1.5, 16] }, // right
-  { position: [0, 0.75, -8], size: [18, 1.5, 0.15] }, // back
-  { position: [-4, 0.75, 8], size: [10, 1.5, 0.15] }, // front-left
-  { position: [4, 0.75, 8], size: [10, 1.5, 0.15] }, // front-right
-  // Internal dividers
-  { position: [0, 0.6, -3], size: [0.12, 1.2, 4] }, // center divider top
-  { position: [-3, 0.6, 2], size: [6, 1.2, 0.12] }, // horizontal divider left
-  { position: [3, 0.6, 2], size: [6, 1.2, 0.12] }, // horizontal divider right
-];
 
 /* ── Scene ─────────────────────────────────────────────── */
 
@@ -157,15 +171,12 @@ function Scene({
 }) {
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[10, 15, 8]} intensity={1} castShadow />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 15, 8]} intensity={1.2} />
       <directionalLight position={[-5, 10, -5]} intensity={0.3} />
 
-      {/* Gallery */}
       <GalleryFloor />
 
-      {/* Station markers */}
       {stations.map((station) => (
         <StationMarker
           key={station.id}
@@ -177,7 +188,6 @@ function Scene({
         />
       ))}
 
-      {/* Camera controls */}
       <OrbitControls
         enablePan={true}
         enableZoom={true}
@@ -257,9 +267,9 @@ export default function MapView({ onBack }: MapViewProps) {
       </div>
 
       {/* Map + info panel */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* 3D Canvas */}
-        <div className="flex-1">
+        <div className="absolute inset-0" style={{ zIndex: 0 }}>
           <Canvas
             camera={{
               position: [12, 14, 12],
@@ -267,7 +277,7 @@ export default function MapView({ onBack }: MapViewProps) {
               near: 0.1,
               far: 100,
             }}
-            style={{ background: "#F8FAFC" }}
+            style={{ background: "#F8FAFC", width: "100%", height: "100%" }}
           >
             <Scene selectedId={selectedId} onSelect={handleSelect} />
           </Canvas>
@@ -275,10 +285,12 @@ export default function MapView({ onBack }: MapViewProps) {
 
         {/* Station info side panel */}
         {selectedStation && (
-          <StationInfo
-            station={selectedStation}
-            onClose={() => setSelectedId(null)}
-          />
+          <div className="absolute right-0 top-0 bottom-0 z-10">
+            <StationInfo
+              station={selectedStation}
+              onClose={() => setSelectedId(null)}
+            />
+          </div>
         )}
       </div>
     </div>
