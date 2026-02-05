@@ -30,6 +30,9 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
   const audioChunksRef = useRef<Blob[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioQueueRef = useRef<string[]>([]);
+  const isPlayingRef = useRef(false);
+  const allAudioReceivedRef = useRef(false);
   const msgIdRef = useRef(0);
 
   const nextId = () => `msg-${++msgIdRef.current}`;
@@ -38,6 +41,40 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
+
+  // ── Play next audio chunk from queue ──────────────────
+  const playNextInQueue = useCallback(() => {
+    if (isPlayingRef.current) return;
+    const next = audioQueueRef.current.shift();
+    if (!next) {
+      // Queue empty — if all audio received, go idle
+      if (allAudioReceivedRef.current) {
+        setState("idle");
+        allAudioReceivedRef.current = false;
+      }
+      return;
+    }
+    isPlayingRef.current = true;
+    setState("speaking");
+
+    const raw = atob(next);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const blob = new Blob([bytes], { type: "audio/mp3" });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    const finish = () => {
+      URL.revokeObjectURL(url);
+      audioRef.current = null;
+      isPlayingRef.current = false;
+      playNextInQueue();
+    };
+    audio.onended = finish;
+    audio.onerror = finish;
+    audio.play().catch(finish);
+  }, []);
 
   // ── Handle a message from the backend ─────────────────
   const handleServerMessage = useCallback(
@@ -56,6 +93,8 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         case "response_start":
           setState("responding");
           setStreamingText("");
+          allAudioReceivedRef.current = false;
+          audioQueueRef.current = [];
           break;
 
         case "response_chunk":
@@ -67,31 +106,22 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           setMessages((prev) => [...prev, { id: nextId(), sender: "robot", text: msg.text ?? "" }]);
           break;
 
-        case "audio": {
-          setState("speaking");
+        case "audio":
+          // Queue audio chunk and start playing if not already
           setStatusText("");
           if (msg.data) {
-            const raw = atob(msg.data);
-            const bytes = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-            const blob = new Blob([bytes], { type: msg.mime ?? "audio/mp3" });
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.onended = () => {
-              setState("idle");
-              URL.revokeObjectURL(url);
-              audioRef.current = null;
-            };
-            audio.onerror = () => {
-              setState("idle");
-              URL.revokeObjectURL(url);
-              audioRef.current = null;
-            };
-            audio.play().catch(() => setState("idle"));
+            audioQueueRef.current.push(msg.data);
+            playNextInQueue();
           }
           break;
-        }
+
+        case "audio_done":
+          allAudioReceivedRef.current = true;
+          // If nothing is playing and queue is empty, go idle now
+          if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
+            setState("idle");
+          }
+          break;
 
         case "error":
           setMessages((prev) => [
@@ -103,7 +133,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           break;
       }
     },
-    [],
+    [playNextInQueue],
   );
 
   // ── WebSocket lifecycle ───────────────────────────────
@@ -152,6 +182,9 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+    allAudioReceivedRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
