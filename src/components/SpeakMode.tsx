@@ -28,7 +28,6 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
@@ -213,7 +212,6 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         : "audio/webm";
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
 
       // Signal backend to start streaming STT session
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -231,7 +229,6 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
 
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        audioChunksRef.current = [];
 
         // Signal backend that audio stream is complete
         if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -243,8 +240,8 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         }
       };
 
-      // Start recording with 250ms timeslice for streaming chunks
-      recorder.start(250);
+      // Start recording with 100ms timeslice for faster streaming
+      recorder.start(100);
       setState("recording");
     } catch {
       setMessages((prev) => [
