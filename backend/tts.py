@@ -1,6 +1,9 @@
 import io
+import logging
 from deepgram import AsyncDeepgramClient
 from config import DEEPGRAM_API_KEY, TTS_VOICE
+
+logger = logging.getLogger("sahabot")
 
 _client: AsyncDeepgramClient | None = None
 
@@ -24,6 +27,17 @@ async def synthesize(text: str) -> bytes:
         text=text,
         model=TTS_VOICE,
     ):
-        buffer.write(chunk)
+        logger.info("TTS chunk type: %s, value preview: %r", type(chunk).__name__, str(chunk)[:100])
+        if isinstance(chunk, bytes):
+            buffer.write(chunk)
+        elif hasattr(chunk, "read"):
+            buffer.write(chunk.read())
+        elif hasattr(chunk, "content"):
+            buffer.write(chunk.content)
+        else:
+            # Try converting to bytes
+            buffer.write(bytes(chunk) if chunk else b"")
 
-    return buffer.getvalue()
+    result = buffer.getvalue()
+    logger.info("TTS synthesized %d bytes for: %s", len(result), text[:50])
+    return result
