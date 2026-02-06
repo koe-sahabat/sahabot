@@ -87,7 +87,15 @@ async def websocket_endpoint(ws: WebSocket):
                     async def on_final(text: str):
                         await ws.send_json({"type": "transcription_interim", "text": text})
 
-                    transcriber = LiveTranscriber(on_interim=on_interim, on_final=on_final)
+                    async def on_speech_end():
+                        # VAD detected user stopped speaking
+                        await ws.send_json({"type": "speech_end"})
+
+                    transcriber = LiveTranscriber(
+                        on_interim=on_interim,
+                        on_final=on_final,
+                        on_speech_end=on_speech_end,
+                    )
                     await transcriber.connect()
                     await ws.send_json({"type": "listening"})
 

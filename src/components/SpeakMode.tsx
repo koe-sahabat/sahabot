@@ -90,6 +90,13 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           // Backend acknowledged audio_start, streaming is now active
           break;
 
+        case "speech_end":
+          // VAD detected user stopped speaking - auto-stop recording
+          if (mediaRecorderRef.current?.state === "recording") {
+            mediaRecorderRef.current.stop();
+          }
+          break;
+
         case "transcription_interim":
           // Real-time transcription while user is speaking
           setInterimTranscript(msg.text ?? "");

@@ -16,7 +16,8 @@ DEEPGRAM_WS_URL = (
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
-    "&endpointing=300"  # Auto-detect end of speech after 300ms silence
+    "&endpointing=300"
+    "&utterance_end_ms=1000"  # Fire UtteranceEnd after 1s of silence
 )
 
 
@@ -27,13 +28,16 @@ class LiveTranscriber:
         self,
         on_interim: Callable[[str], Awaitable[None]] | None = None,
         on_final: Callable[[str], Awaitable[None]] | None = None,
+        on_speech_end: Callable[[], Awaitable[None]] | None = None,
     ):
         self.on_interim = on_interim
         self.on_final = on_final
+        self.on_speech_end = on_speech_end
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._receive_task: asyncio.Task | None = None
         self._final_transcript = ""
         self._closed = False
+        self._speech_end_fired = False
 
     async def connect(self):
         """Open connection to Deepgram live API."""
@@ -79,8 +83,10 @@ class LiveTranscriber:
                     break
                 data = json.loads(message)
 
+                msg_type = data.get("type")
+
                 # Handle transcription results
-                if data.get("type") == "Results":
+                if msg_type == "Results":
                     alt = data.get("channel", {}).get("alternatives", [{}])[0]
                     transcript = alt.get("transcript", "")
                     is_final = data.get("is_final", False)
@@ -104,6 +110,13 @@ class LiveTranscriber:
                                 else:
                                     display = transcript
                                 await self.on_interim(display)
+
+                # UtteranceEnd = speaker stopped talking (VAD)
+                elif msg_type == "UtteranceEnd":
+                    if self.on_speech_end and not self._speech_end_fired and self._final_transcript:
+                        self._speech_end_fired = True
+                        logger.info("VAD: utterance end detected")
+                        await self.on_speech_end()
 
         except websockets.exceptions.ConnectionClosed:
             logger.info("Deepgram connection closed")
