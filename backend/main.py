@@ -37,12 +37,14 @@ async def websocket_endpoint(ws: WebSocket):
                 break
 
             if "bytes" in data:
+                logger.debug("Received %d bytes of audio", len(data["bytes"]))
                 if transcriber:
                     await transcriber.send_audio(data["bytes"])
 
             elif "text" in data:
                 msg = json.loads(data["text"])
                 msg_type = msg.get("type")
+                logger.info("Received message type: %s", msg_type)
 
                 if msg_type == "audio_start":
                     logger.info("Starting live transcription")
