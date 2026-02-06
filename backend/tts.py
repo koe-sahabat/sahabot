@@ -1,3 +1,4 @@
+import io
 from deepgram import AsyncDeepgramClient
 from config import DEEPGRAM_API_KEY, TTS_VOICE
 
@@ -18,9 +19,11 @@ async def synthesize(text: str) -> bytes:
     """
     client = _get_client()
 
-    response = await client.speak.v1.audio.generate(
+    buffer = io.BytesIO()
+    async for chunk in client.speak.v1.audio.generate(
         text=text,
         model=TTS_VOICE,
-    )
+    ):
+        buffer.write(chunk)
 
-    return response.stream.getvalue()
+    return buffer.getvalue()
