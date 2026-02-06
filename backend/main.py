@@ -14,7 +14,7 @@ from stt_live import LiveTranscriber
 from llm import stream_response
 from tts import synthesize
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sahabot")
 
 app = FastAPI(title="SahaBot")
@@ -37,72 +37,47 @@ async def websocket_endpoint(ws: WebSocket):
                 break
 
             if "bytes" in data:
-                logger.debug("Received %d bytes of audio", len(data["bytes"]))
                 if transcriber:
                     await transcriber.send_audio(data["bytes"])
 
             elif "text" in data:
                 msg = json.loads(data["text"])
                 msg_type = msg.get("type")
-                logger.info("Received message type: %s", msg_type)
 
                 if msg_type == "audio_start":
-                    logger.info("Starting live transcription")
-
-                    async def on_interim(text: str):
-                        await ws.send_json({"type": "transcription_interim", "text": text})
-
                     async def on_speech_end():
                         await ws.send_json({"type": "speech_end"})
 
-                    transcriber = LiveTranscriber(
-                        on_interim=on_interim,
-                        on_speech_end=on_speech_end,
-                    )
+                    transcriber = LiveTranscriber(on_speech_end=on_speech_end)
                     await transcriber.connect()
-                    await ws.send_json({"type": "listening"})
 
                 elif msg_type == "audio_end":
                     if not transcriber:
                         continue
 
-                    logger.info("Finishing live transcription")
                     text = await transcriber.finish()
                     transcriber = None
 
-                    logger.info("Transcription: %s", text)
-
                     if not text:
-                        await ws.send_json({
-                            "type": "error",
-                            "message": "I didn't catch that. Could you try again?",
-                        })
+                        await ws.send_json({"type": "error"})
                         continue
 
-                    await ws.send_json({"type": "transcription", "text": text})
                     messages.append({"role": "user", "content": text})
 
-                    await ws.send_json({"type": "response_start"})
-
+                    # LLM + TTS pipeline
                     sentence_buffer = ""
                     pending_tts: list[tuple[asyncio.Task, int]] = []
                     sent_index = 0
                     sentence_index = 0
 
                     async def send_ready_audio():
-                        """Send audio chunks in order as they become ready."""
                         nonlocal sent_index
                         while pending_tts:
-                            # Find the next chunk we need to send
                             for i, (task, idx) in enumerate(pending_tts):
                                 if idx == sent_index and task.done():
                                     audio = task.result()
                                     audio_b64 = base64.b64encode(audio).decode("ascii")
-                                    await ws.send_json({
-                                        "type": "audio",
-                                        "data": audio_b64,
-                                        "mime": "audio/mp3",
-                                    })
+                                    await ws.send_json({"type": "audio", "data": audio_b64})
                                     pending_tts.pop(i)
                                     sent_index += 1
                                     break
@@ -112,7 +87,6 @@ async def websocket_endpoint(ws: WebSocket):
                     async def on_chunk(chunk: str):
                         nonlocal sentence_buffer, sentence_index
                         sentence_buffer += chunk
-                        await ws.send_json({"type": "response_chunk", "text": chunk})
 
                         parts = _SENTENCE_SPLIT.split(sentence_buffer)
                         if len(parts) > 1:
@@ -135,9 +109,7 @@ async def websocket_endpoint(ws: WebSocket):
                         task = asyncio.create_task(synthesize(remainder))
                         pending_tts.append((task, sentence_index))
 
-                    await ws.send_json({"type": "response_end", "text": full_response})
-
-                    # Wait for remaining TTS and send
+                    # Send remaining audio
                     while pending_tts:
                         await asyncio.sleep(0.05)
                         await send_ready_audio()

@@ -2,34 +2,24 @@
 
 import asyncio
 import json
-import logging
 from typing import Callable, Awaitable
 
 import websockets
 from config import DEEPGRAM_API_KEY
-
-logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
     "?model=nova-2"
     "&language=en"
     "&smart_format=true"
-    "&interim_results=true"
+    "&interim_results=false"
     "&endpointing=300"
     "&utterance_end_ms=1000"
 )
 
 
 class LiveTranscriber:
-    """Manages a live transcription session with Deepgram."""
-
-    def __init__(
-        self,
-        on_interim: Callable[[str], Awaitable[None]] | None = None,
-        on_speech_end: Callable[[], Awaitable[None]] | None = None,
-    ):
-        self.on_interim = on_interim
+    def __init__(self, on_speech_end: Callable[[], Awaitable[None]] | None = None):
         self.on_speech_end = on_speech_end
         self._ws = None
         self._receive_task = None
@@ -41,11 +31,9 @@ class LiveTranscriber:
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
         self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
         self._receive_task = asyncio.create_task(self._receive_loop())
-        logger.info("Deepgram live connection opened")
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
-            logger.debug("Sending %d bytes to Deepgram", len(chunk))
             await self._ws.send(chunk)
 
     async def finish(self) -> str:
@@ -55,10 +43,9 @@ class LiveTranscriber:
                 try:
                     await asyncio.wait_for(self._receive_task, timeout=2.0)
                 except asyncio.TimeoutError:
-                    logger.warning("Timeout waiting for final transcript")
+                    pass
             await self._ws.close()
             self._closed = True
-        logger.info("Final transcript: %s", self._final_transcript)
         return self._final_transcript
 
     async def close(self):
@@ -75,36 +62,24 @@ class LiveTranscriber:
                     break
                 data = json.loads(message)
                 msg_type = data.get("type")
-                logger.debug("Deepgram msg: %s", msg_type)
 
                 if msg_type == "Results":
                     alt = data.get("channel", {}).get("alternatives", [{}])[0]
                     transcript = alt.get("transcript", "")
                     is_final = data.get("is_final", False)
 
-                    if transcript:
-                        if is_final:
-                            if self._final_transcript:
-                                self._final_transcript += " " + transcript
-                            else:
-                                self._final_transcript = transcript
-
-                        if self.on_interim:
-                            display = self._final_transcript
-                            if not is_final:
-                                if display:
-                                    display += " " + transcript
-                                else:
-                                    display = transcript
-                            await self.on_interim(display)
+                    if transcript and is_final:
+                        if self._final_transcript:
+                            self._final_transcript += " " + transcript
+                        else:
+                            self._final_transcript = transcript
 
                 elif msg_type == "UtteranceEnd":
                     if self.on_speech_end and not self._speech_end_fired and self._final_transcript:
                         self._speech_end_fired = True
-                        logger.info("VAD: utterance end detected")
                         await self.on_speech_end()
 
         except websockets.exceptions.ConnectionClosed:
-            logger.info("Deepgram connection closed")
+            pass
         except Exception:
-            logger.exception("Error in Deepgram receive loop")
+            pass
