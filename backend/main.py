@@ -55,6 +55,10 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             data = await ws.receive()
 
+            # Handle disconnect message
+            if data.get("type") == "websocket.disconnect":
+                break
+
             # Binary frame = streaming audio chunk
             if "bytes" in data:
                 if transcriber:
