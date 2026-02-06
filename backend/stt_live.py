@@ -38,7 +38,7 @@ class LiveTranscriber:
     async def connect(self):
         """Open connection to Deepgram live API."""
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        self._ws = await websockets.connect(DEEPGRAM_WS_URL, extra_headers=headers)
+        self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
         self._receive_task = asyncio.create_task(self._receive_loop())
         logger.info("Deepgram live connection opened")
 
