@@ -24,6 +24,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
   ]);
   const [streamingText, setStreamingText] = useState("");
   const [statusText, setStatusText] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -85,9 +86,19 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           if (msg.status === "synthesizing") setStatusText("Generating speech\u2026");
           break;
 
+        case "listening":
+          // Backend acknowledged audio_start, streaming is now active
+          break;
+
+        case "transcription_interim":
+          // Real-time transcription while user is speaking
+          setInterimTranscript(msg.text ?? "");
+          break;
+
         case "transcription":
           setMessages((prev) => [...prev, { id: nextId(), sender: "user", text: msg.text ?? "" }]);
           setStatusText("");
+          setInterimTranscript("");
           break;
 
         case "response_start":
@@ -130,6 +141,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           ]);
           setState("idle");
           setStatusText("");
+          setInterimTranscript("");
           break;
       }
     },
@@ -185,6 +197,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     allAudioReceivedRef.current = false;
+    setInterimTranscript("");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -195,25 +208,36 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      // Signal backend to start streaming STT session
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "audio_start" }));
+      }
+
+      // Stream audio chunks every 250ms as they become available
+      recorder.ondataavailable = async (e) => {
+        if (e.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          // Convert Blob to ArrayBuffer and send as binary frame
+          const arrayBuffer = await e.data.arrayBuffer();
+          wsRef.current.send(arrayBuffer);
+        }
       };
 
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         audioChunksRef.current = [];
 
-        if (blob.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+        // Signal backend that audio stream is complete
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
           setState("processing");
           setStatusText("Processing\u2026");
-          wsRef.current.send(blob);
+          wsRef.current.send(JSON.stringify({ type: "audio_end" }));
         } else {
           setState("idle");
         }
       };
 
-      recorder.start();
+      // Start recording with 250ms timeslice for streaming chunks
+      recorder.start(250);
       setState("recording");
     } catch {
       setMessages((prev) => [
@@ -345,15 +369,24 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         </div>
       </div>
 
-      {/* Recording waveform */}
+      {/* Recording waveform + interim transcription */}
       {state === "recording" && (
-        <div className="flex items-center justify-center gap-2 pb-2">
-          <div className="flex items-end gap-1">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="wave-bar w-1 rounded-full bg-red-400" style={{ height: 8 }} />
-            ))}
+        <div className="flex flex-col items-center gap-2 pb-2 px-8">
+          {interimTranscript && (
+            <div className="w-full max-w-2xl rounded-lg bg-red-50 px-4 py-2 text-sm text-gray-700 border border-red-100">
+              <span className="text-red-400 mr-2">Hearing:</span>
+              {interimTranscript}
+              <span className="ml-1 inline-block h-3 w-0.5 animate-pulse bg-red-400" />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <div className="flex items-end gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="wave-bar w-1 rounded-full bg-red-400" style={{ height: 8 }} />
+              ))}
+            </div>
+            <span className="text-sm font-medium text-red-500">Listening\u2026</span>
           </div>
-          <span className="text-sm font-medium text-red-500">Listening\u2026</span>
         </div>
       )}
 
