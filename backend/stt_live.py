@@ -16,8 +16,8 @@ DEEPGRAM_WS_URL = (
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
-    "&endpointing=200"
-    "&utterance_end_ms=500"
+    "&endpointing=300"
+    "&utterance_end_ms=1000"
 )
 
 
@@ -45,6 +45,7 @@ class LiveTranscriber:
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
+            logger.debug("Sending %d bytes to Deepgram", len(chunk))
             await self._ws.send(chunk)
 
     async def finish(self) -> str:
@@ -74,6 +75,7 @@ class LiveTranscriber:
                     break
                 data = json.loads(message)
                 msg_type = data.get("type")
+                logger.debug("Deepgram msg: %s", msg_type)
 
                 if msg_type == "Results":
                     alt = data.get("channel", {}).get("alternatives", [{}])[0]

@@ -240,8 +240,8 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         }
       };
 
-      // Start recording with 100ms timeslice for faster streaming
-      recorder.start(100);
+      // Start recording with 250ms timeslice for streaming chunks
+      recorder.start(250);
       setState("recording");
     } catch {
       setMessages((prev) => [
