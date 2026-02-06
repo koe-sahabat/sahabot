@@ -45,6 +45,8 @@ async def websocket_endpoint(ws: WebSocket):
                 msg_type = msg.get("type")
 
                 if msg_type == "audio_start":
+                    logger.info("Starting live transcription")
+
                     async def on_interim(text: str):
                         await ws.send_json({"type": "transcription_interim", "text": text})
 
@@ -62,8 +64,11 @@ async def websocket_endpoint(ws: WebSocket):
                     if not transcriber:
                         continue
 
+                    logger.info("Finishing live transcription")
                     text = await transcriber.finish()
                     transcriber = None
+
+                    logger.info("Transcription: %s", text)
 
                     if not text:
                         await ws.send_json({
