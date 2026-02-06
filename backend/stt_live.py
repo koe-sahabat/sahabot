@@ -2,17 +2,20 @@
 
 import asyncio
 import json
+import logging
 from typing import Callable, Awaitable
 
 import websockets
 from config import DEEPGRAM_API_KEY
+
+logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
     "?model=nova-2"
     "&language=en"
     "&smart_format=true"
-    "&interim_results=false"
+    "&interim_results=true"
     "&endpointing=300"
     "&utterance_end_ms=1000"
 )
@@ -31,6 +34,7 @@ class LiveTranscriber:
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
         self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
         self._receive_task = asyncio.create_task(self._receive_loop())
+        logger.info("Deepgram connected")
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
@@ -46,6 +50,7 @@ class LiveTranscriber:
                     pass
             await self._ws.close()
             self._closed = True
+        logger.info("Transcript: %s", self._final_transcript)
         return self._final_transcript
 
     async def close(self):
@@ -77,6 +82,7 @@ class LiveTranscriber:
                 elif msg_type == "UtteranceEnd":
                     if self.on_speech_end and not self._speech_end_fired and self._final_transcript:
                         self._speech_end_fired = True
+                        logger.info("VAD triggered")
                         await self.on_speech_end()
 
         except websockets.exceptions.ConnectionClosed:
