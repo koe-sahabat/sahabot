@@ -10,6 +10,7 @@ from config import DEEPGRAM_API_KEY
 
 logger = logging.getLogger("sahabot")
 
+# Note: No encoding specified - Deepgram will auto-detect WebM/Opus from browser
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
     "?model=nova-3"
@@ -17,7 +18,7 @@ DEEPGRAM_WS_URL = (
     "&smart_format=true"
     "&interim_results=true"
     "&endpointing=300"
-    "&utterance_end_ms=1000"  # Fire UtteranceEnd after 1s of silence
+    "&utterance_end_ms=1000"
 )
 
 
@@ -49,6 +50,7 @@ class LiveTranscriber:
     async def send_audio(self, chunk: bytes):
         """Send an audio chunk to Deepgram."""
         if self._ws and not self._closed:
+            logger.debug("Sending audio chunk: %d bytes", len(chunk))
             await self._ws.send(chunk)
 
     async def finish(self) -> str:
@@ -82,8 +84,14 @@ class LiveTranscriber:
                 if self._closed:
                     break
                 data = json.loads(message)
+                logger.debug("Deepgram message: %s", data)
 
                 msg_type = data.get("type")
+
+                # Log errors from Deepgram
+                if msg_type == "Error":
+                    logger.error("Deepgram error: %s", data)
+                    continue
 
                 # Handle transcription results
                 if msg_type == "Results":

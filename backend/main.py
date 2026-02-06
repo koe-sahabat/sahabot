@@ -27,7 +27,7 @@ from stt_live import LiveTranscriber
 from llm import stream_response
 from tts import synthesize
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("sahabot")
 
 app = FastAPI(title="SahaBot")
