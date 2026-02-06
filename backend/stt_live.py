@@ -12,7 +12,7 @@ logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
-    "?model=nova-3"
+    "?model=nova-2"
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
