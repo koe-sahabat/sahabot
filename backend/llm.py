@@ -27,7 +27,7 @@ async def stream_response(
     full_text = ""
     async with client.messages.stream(
         model="claude-3-haiku-20240307",
-        max_tokens=256,
+        max_tokens=100,
         system=SYSTEM_PROMPT,
         messages=messages,
     ) as stream:

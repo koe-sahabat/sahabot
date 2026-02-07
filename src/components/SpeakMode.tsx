@@ -160,7 +160,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         }
       };
 
-      recorder.start(250);
+      recorder.start(100);
       setState("recording");
     } catch {
       // Microphone access denied
