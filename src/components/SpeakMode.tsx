@@ -116,18 +116,22 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
   useEffect(() => {
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
+    let disposed = false;
 
     function connect() {
+      if (disposed) return;
+
       setConnection("connecting");
       ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
-      ws.onopen = () => setConnection("connected");
+      ws.onopen = () => {
+        if (!disposed) setConnection("connected");
+      };
       ws.onclose = () => {
+        if (disposed) return;
         setConnection("disconnected");
         wsRef.current = null;
-        // Reset interaction state so the mic button is not stuck disabled
-        // after a server restart mid-interaction.
         setState("idle");
         audioQueueRef.current = [];
         isPlayingRef.current = false;
@@ -146,6 +150,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
 
     connect();
     return () => {
+      disposed = true;
       clearTimeout(reconnectTimer);
       ws?.close();
     };
@@ -158,6 +163,11 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       return;
     }
     if (state !== "idle") return;
+
+    // Abort if WebSocket is not open
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     // Interrupt playback
     if (audioRef.current) {
@@ -177,9 +187,8 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
 
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "audio_start" }));
-      }
+      // Notify backend before starting the recorder
+      wsRef.current.send(JSON.stringify({ type: "audio_start" }));
 
       recorder.ondataavailable = async (e) => {
         if (e.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -207,7 +216,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       recorder.start(100);
       setState("recording");
     } catch {
-      // Microphone access denied
+      // Microphone access denied or other error
       setState("idle");
     }
   }, [state]);
