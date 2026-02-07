@@ -19,8 +19,8 @@ logger = logging.getLogger("sahabot")
 
 app = FastAPI(title="SahaBot")
 
-# Split on sentence endings or commas for faster first audio
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?,])\s+")
+# Split on sentence endings
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
 @app.websocket("/ws")
