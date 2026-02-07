@@ -19,6 +19,7 @@ app = FastAPI(title="SahaBot")
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
+    logger.info("Client WebSocket connected")
 
     messages: list[dict] = []
     transcriber: LiveTranscriber | None = None
@@ -43,23 +44,41 @@ async def websocket_endpoint(ws: WebSocket):
             msg_type = msg.get("type")
 
             if msg_type == "audio_start":
+                # Close any leftover transcriber from a previous turn.
+                if transcriber:
+                    logger.warning("Closing stale transcriber before starting new one")
+                    await transcriber.close()
+                    transcriber = None
+
+                logger.info("audio_start — opening Deepgram session")
+
                 async def on_speech_end():
                     await ws.send_json({"type": "speech_end"})
 
-                transcriber = LiveTranscriber(on_speech_end=on_speech_end)
-                await transcriber.connect()
+                try:
+                    transcriber = LiveTranscriber(on_speech_end=on_speech_end)
+                    await transcriber.connect()
+                except Exception:
+                    logger.exception("Failed to connect to Deepgram")
+                    transcriber = None
+                    await ws.send_json({"type": "error"})
 
             elif msg_type == "audio_end":
+                logger.info("audio_end — finishing transcription")
                 if not transcriber:
+                    logger.warning("audio_end received but no active transcriber")
+                    await ws.send_json({"type": "error"})
                     continue
 
                 text = await transcriber.finish()
                 transcriber = None
 
                 if not text:
+                    logger.warning("Empty transcript")
                     await ws.send_json({"type": "error"})
                     continue
 
+                logger.info("User said: %s", text)
                 messages.append({"role": "user", "content": text})
 
                 # Run the LLM → TTS pipeline.
@@ -68,9 +87,10 @@ async def websocket_endpoint(ws: WebSocket):
 
                 messages.append({"role": "assistant", "content": full_response})
                 await ws.send_json({"type": "audio_done"})
+                logger.info("Turn complete")
 
     except WebSocketDisconnect:
-        pass
+        logger.info("Client disconnected")
     except Exception:
         logger.exception("WebSocket error")
     finally:

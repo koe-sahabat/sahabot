@@ -38,6 +38,7 @@ class LiveTranscriber:
 
     async def connect(self):
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
+        logger.info("Connecting to Deepgram...")
         self._ws = await websockets.connect(
             DEEPGRAM_WS_URL, additional_headers=headers
         )
@@ -46,20 +47,29 @@ class LiveTranscriber:
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
-            await self._ws.send(chunk)
+            try:
+                await self._ws.send(chunk)
+            except Exception:
+                logger.exception("Failed to send audio chunk to Deepgram")
 
     async def finish(self) -> str:
         """Close the Deepgram stream and return the full transcript."""
         if self._ws and not self._closed:
-            await self._ws.send(json.dumps({"type": "CloseStream"}))
+            try:
+                await self._ws.send(json.dumps({"type": "CloseStream"}))
+            except Exception:
+                logger.exception("Failed to send CloseStream")
             if self._receive_task:
                 try:
                     await asyncio.wait_for(self._receive_task, timeout=2.0)
                 except asyncio.TimeoutError:
-                    pass
-            await self._ws.close()
+                    logger.warning("Timed out waiting for Deepgram receive loop")
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
             self._closed = True
-        logger.info("Transcript: %s", self._final_transcript)
+        logger.info("Final transcript: '%s'", self._final_transcript)
         return self._final_transcript
 
     async def close(self):
@@ -67,7 +77,10 @@ class LiveTranscriber:
         if self._receive_task:
             self._receive_task.cancel()
         if self._ws:
-            await self._ws.close()
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
 
     async def _receive_loop(self):
         try:
@@ -82,6 +95,13 @@ class LiveTranscriber:
                     transcript = alt.get("transcript", "")
                     is_final = data.get("is_final", False)
 
+                    if transcript:
+                        logger.info(
+                            "Deepgram %s: %s",
+                            "FINAL" if is_final else "interim",
+                            transcript,
+                        )
+
                     if transcript and is_final:
                         if self._final_transcript:
                             self._final_transcript += " " + transcript
@@ -89,6 +109,7 @@ class LiveTranscriber:
                             self._final_transcript = transcript
 
                 elif msg_type == "UtteranceEnd":
+                    logger.info("Deepgram UtteranceEnd received")
                     if (
                         self.on_speech_end
                         and not self._speech_end_fired
@@ -101,7 +122,10 @@ class LiveTranscriber:
                 elif msg_type == "Error":
                     logger.error("Deepgram error: %s", data)
 
+                elif msg_type == "Metadata":
+                    logger.info("Deepgram metadata: request_id=%s", data.get("request_id"))
+
         except websockets.exceptions.ConnectionClosed as e:
-            logger.warning("Deepgram connection closed: %s", e)
+            logger.warning("Deepgram connection closed: code=%s reason=%s", e.code, e.reason)
         except Exception:
             logger.exception("Deepgram receive loop error")
