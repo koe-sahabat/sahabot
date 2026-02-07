@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import Callable, Awaitable
+from typing import Awaitable, Callable
 
 import websockets
 from config import DEEPGRAM_API_KEY
@@ -12,7 +12,7 @@ logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
-    "?model=nova-2"
+    "?model=nova-3"
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
@@ -22,25 +22,34 @@ DEEPGRAM_WS_URL = (
 
 
 class LiveTranscriber:
+    """Manages a single Deepgram live transcription session.
+
+    Streams audio chunks to Deepgram, accumulates final transcripts,
+    and fires an optional callback when VAD detects the speaker stopped.
+    """
+
     def __init__(self, on_speech_end: Callable[[], Awaitable[None]] | None = None):
         self.on_speech_end = on_speech_end
-        self._ws = None
-        self._receive_task = None
+        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._receive_task: asyncio.Task | None = None
         self._final_transcript = ""
         self._closed = False
         self._speech_end_fired = False
 
     async def connect(self):
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
+        self._ws = await websockets.connect(
+            DEEPGRAM_WS_URL, additional_headers=headers
+        )
         self._receive_task = asyncio.create_task(self._receive_loop())
-        logger.info("Deepgram connected")
+        logger.info("Deepgram live session connected")
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
             await self._ws.send(chunk)
 
     async def finish(self) -> str:
+        """Close the Deepgram stream and return the full transcript."""
         if self._ws and not self._closed:
             await self._ws.send(json.dumps({"type": "CloseStream"}))
             if self._receive_task:
@@ -80,12 +89,16 @@ class LiveTranscriber:
                             self._final_transcript = transcript
 
                 elif msg_type == "UtteranceEnd":
-                    if self.on_speech_end and not self._speech_end_fired and self._final_transcript:
+                    if (
+                        self.on_speech_end
+                        and not self._speech_end_fired
+                        and self._final_transcript
+                    ):
                         self._speech_end_fired = True
-                        logger.info("VAD triggered")
+                        logger.info("VAD speech-end triggered")
                         await self.on_speech_end()
 
         except websockets.exceptions.ConnectionClosed:
             pass
         except Exception:
-            pass
+            logger.exception("Deepgram receive loop error")

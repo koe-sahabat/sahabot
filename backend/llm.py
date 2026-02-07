@@ -1,4 +1,6 @@
-from typing import Callable, Awaitable
+"""Claude LLM integration — async-generator streaming interface."""
+
+from collections.abc import AsyncIterator
 
 import anthropic
 from config import ANTHROPIC_API_KEY, SYSTEM_PROMPT
@@ -13,26 +15,15 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-async def stream_response(
-    messages: list[dict],
-    on_chunk: Callable[[str], Awaitable[None]],
-) -> str:
-    """Stream a response from Claude given conversation history.
-
-    Calls on_chunk(text) for each streamed token.
-    Returns the full response text.
-    """
+async def stream_tokens(messages: list[dict]) -> AsyncIterator[str]:
+    """Yield text tokens from Claude given conversation history."""
     client = _get_client()
 
-    full_text = ""
     async with client.messages.stream(
-        model="claude-3-haiku-20240307",
-        max_tokens=100,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=300,
         system=SYSTEM_PROMPT,
         messages=messages,
     ) as stream:
         async for text in stream.text_stream:
-            full_text += text
-            await on_chunk(text)
-
-    return full_text
+            yield text

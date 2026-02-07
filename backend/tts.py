@@ -1,4 +1,7 @@
+"""Text-to-speech via Deepgram Aura."""
+
 import io
+
 from deepgram import AsyncDeepgramClient
 from config import DEEPGRAM_API_KEY, TTS_VOICE
 
@@ -13,7 +16,7 @@ def _get_client() -> AsyncDeepgramClient:
 
 
 async def synthesize(text: str) -> bytes:
-    """Convert text to speech using Deepgram Aura TTS."""
+    """Convert a text string to MP3 audio bytes using Deepgram Aura TTS."""
     client = _get_client()
     buffer = io.BytesIO()
 
