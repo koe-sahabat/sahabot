@@ -3,8 +3,11 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
+
+# Groq model — see: https://console.groq.com/docs/models
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 
 # Deepgram Aura TTS voice — see: https://developers.deepgram.com/docs/tts-models
 TTS_VOICE = os.getenv("TTS_VOICE", "aura-2-asteria-en")

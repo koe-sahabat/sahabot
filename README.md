@@ -2,12 +2,12 @@
 
 A conversational gallery usher robot. Visitors speak to SahaBot through a web interface and it responds with voice, guiding them through five exhibition stations.
 
-Built with React + Three.js on the frontend and a FastAPI streaming pipeline on the backend. Speech is handled by Deepgram (STT and TTS), and conversation by Claude.
+Built with React + Three.js on the frontend and a FastAPI streaming pipeline on the backend. Speech is handled by Deepgram (STT and TTS), and conversation by Groq.
 
 ## Architecture
 
 ```
-Microphone → Deepgram Live STT (nova-3) → Claude Haiku 4.5 → Deepgram Aura TTS → Speaker
+Microphone → Deepgram Live STT (nova-3) → Groq LLM (llama-3.3-70b) → Deepgram Aura TTS → Speaker
 ```
 
 The backend streams LLM tokens, splits them into sentences, runs TTS concurrently for each sentence, and delivers audio to the client in order through an asyncio.Queue-based pipeline — no polling.
@@ -16,7 +16,7 @@ The backend streams LLM tokens, splits them into sentences, runs TTS concurrentl
 
 - Node.js 22+
 - Python 3.11+
-- [Anthropic API key](https://console.anthropic.com/)
+- [Groq API key](https://console.groq.com/)
 - [Deepgram API key](https://console.deepgram.com/)
 
 ## Setup
@@ -72,7 +72,7 @@ This compiles TypeScript and bundles the frontend into `dist/`. The backend serv
 ├── backend/                Python backend (FastAPI)
 │   ├── main.py               WebSocket server
 │   ├── pipeline.py           LLM → TTS streaming pipeline
-│   ├── llm.py                Claude async generator
+│   ├── llm.py                Groq async streaming generator
 │   ├── tts.py                Deepgram Aura TTS
 │   ├── stt_live.py           Deepgram live STT
 │   └── config.py             Environment and system prompt
@@ -86,6 +86,7 @@ This compiles TypeScript and bundles the frontend into `dist/`. The backend serv
 
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
+| `GROQ_API_KEY` | Yes | Groq API key for LLM |
 | `DEEPGRAM_API_KEY` | Yes | Deepgram API key for STT and TTS |
+| `LLM_MODEL` | No | Groq model (default: `llama-3.3-70b-versatile`) |
 | `TTS_VOICE` | No | Deepgram Aura voice model (default: `aura-2-asteria-en`) |
