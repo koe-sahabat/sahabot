@@ -14,9 +14,8 @@ DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
     "?model=nova-2"
     "&language=en"
-    "&smart_format=true"
     "&interim_results=true"
-    "&endpointing=300"
+    "&endpointing=200"
     "&utterance_end_ms=1000"
 )
 
@@ -28,7 +27,7 @@ class LiveTranscriber:
     and fires an optional callback when VAD detects the speaker stopped.
     """
 
-    def __init__(self, on_speech_end: Callable[[], Awaitable[None]] | None = None):
+    def __init__(self, on_speech_end: Callable[[str], Awaitable[None]] | None = None):
         self.on_speech_end = on_speech_end
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._receive_task: asyncio.Task | None = None
@@ -116,8 +115,8 @@ class LiveTranscriber:
                         and self._final_transcript
                     ):
                         self._speech_end_fired = True
-                        logger.info("VAD speech-end triggered")
-                        await self.on_speech_end()
+                        logger.info("VAD speech-end triggered, transcript so far: '%s'", self._final_transcript)
+                        await self.on_speech_end(self._final_transcript)
 
                 elif msg_type == "Error":
                     logger.error("Deepgram error: %s", data)

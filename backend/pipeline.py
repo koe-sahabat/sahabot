@@ -6,7 +6,6 @@ through an asyncio.Queue-based architecture (no polling).
 """
 
 import asyncio
-import base64
 import logging
 import re
 
@@ -123,7 +122,6 @@ class Pipeline:
                 break
             try:
                 audio = await item
-                audio_b64 = base64.b64encode(audio).decode("ascii")
-                await self._ws.send_json({"type": "audio", "data": audio_b64})
+                await self._ws.send_bytes(audio)
             except Exception:
                 logger.exception("TTS/send error for a sentence — skipping")

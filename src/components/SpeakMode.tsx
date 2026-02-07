@@ -18,7 +18,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
+  const audioQueueRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
 
   // Cleanup function for microphone and audio
@@ -62,10 +62,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
     isPlayingRef.current = true;
     setState("speaking");
 
-    const raw = atob(next);
-    const bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-    const blob = new Blob([bytes], { type: "audio/mp3" });
+    const blob = new Blob([next], { type: "audio/mp3" });
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     audioRef.current = audio;
@@ -91,13 +88,6 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           }
           break;
 
-        case "audio":
-          if (msg.data) {
-            audioQueueRef.current.push(msg.data);
-            playNextInQueue();
-          }
-          break;
-
         case "audio_done":
           if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
             setState("idle");
@@ -109,7 +99,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           break;
       }
     },
-    [playNextInQueue]
+    []
   );
 
   // WebSocket lifecycle
@@ -142,9 +132,16 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         reconnectTimer = setTimeout(connect, 3000);
       };
       ws.onerror = () => ws.close();
+      ws.binaryType = "arraybuffer";
       ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        handleServerMessage(msg);
+        // Binary frames are raw audio data; text frames are JSON control messages.
+        if (event.data instanceof ArrayBuffer) {
+          audioQueueRef.current.push(event.data);
+          playNextInQueue();
+        } else {
+          const msg = JSON.parse(event.data);
+          handleServerMessage(msg);
+        }
       };
     }
 
@@ -154,7 +151,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [handleServerMessage]);
+  }, [handleServerMessage, playNextInQueue]);
 
   // Toggle recording
   const toggleRecording = useCallback(async () => {

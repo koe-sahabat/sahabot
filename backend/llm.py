@@ -22,7 +22,7 @@ async def stream_tokens(messages: list[dict]) -> AsyncIterator[str]:
     stream = await client.chat.completions.create(
         model=LLM_MODEL,
         messages=[{"role": "system", "content": SYSTEM_PROMPT}, *messages],
-        max_tokens=300,
+        max_tokens=150,
         temperature=0,
         stream=True,
     )
