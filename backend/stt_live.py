@@ -12,7 +12,7 @@ logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
-    "?model=nova-3"
+    "?model=nova-2"
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
@@ -98,7 +98,10 @@ class LiveTranscriber:
                         logger.info("VAD speech-end triggered")
                         await self.on_speech_end()
 
-        except websockets.exceptions.ConnectionClosed:
-            pass
+                elif msg_type == "Error":
+                    logger.error("Deepgram error: %s", data)
+
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning("Deepgram connection closed: %s", e)
         except Exception:
             logger.exception("Deepgram receive loop error")
