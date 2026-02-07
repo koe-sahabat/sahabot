@@ -16,9 +16,40 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
+
+  // Cleanup function for microphone and audio
+  const cleanup = useCallback(() => {
+    // Stop recording if active
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+
+    // Release microphone
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    // Stop audio playback
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
 
   // Play next audio chunk from queue
   const playNextInQueue = useCallback(() => {
@@ -58,10 +89,6 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
           if (mediaRecorderRef.current?.state === "recording") {
             mediaRecorderRef.current.stop();
           }
-          break;
-
-        case "processing":
-          setState("processing");
           break;
 
         case "audio":
@@ -133,6 +160,8 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : "audio/webm";
@@ -151,7 +180,12 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       };
 
       recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+        // Release microphone tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           setState("processing");
           wsRef.current.send(JSON.stringify({ type: "audio_end" }));
@@ -160,12 +194,20 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
         }
       };
 
-      recorder.start(250);
+      // 100ms chunks for lower latency
+      recorder.start(100);
       setState("recording");
     } catch {
       // Microphone access denied
+      setState("idle");
     }
   }, [state]);
+
+  // Handle back button with cleanup
+  const handleBack = useCallback(() => {
+    cleanup();
+    onBack();
+  }, [cleanup, onBack]);
 
   const robotExpression = state === "recording" ? "listening" : state === "speaking" ? "speaking" : "idle";
 
@@ -182,7 +224,7 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
     <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-white">
       {/* Back button */}
       <button
-        onClick={onBack}
+        onClick={handleBack}
         className="absolute left-6 top-6 flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-gray-200"
       >
         <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
