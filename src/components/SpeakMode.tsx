@@ -126,6 +126,15 @@ export default function SpeakMode({ onBack }: SpeakModeProps) {
       ws.onclose = () => {
         setConnection("disconnected");
         wsRef.current = null;
+        // Reset interaction state so the mic button is not stuck disabled
+        // after a server restart mid-interaction.
+        setState("idle");
+        audioQueueRef.current = [];
+        isPlayingRef.current = false;
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
         reconnectTimer = setTimeout(connect, 3000);
       };
       ws.onerror = () => ws.close();
