@@ -31,8 +31,15 @@ class LiveTranscriber:
         self._speech_end_fired = False
 
     async def connect(self):
-        headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
+        key = DEEPGRAM_API_KEY
+        logger.info("Deepgram key present: %s (len=%d)", bool(key), len(key))
+        headers = {"Authorization": f"Token {key}"}
+        try:
+            self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
+        except websockets.exceptions.InvalidStatus as exc:
+            body = exc.response.body.decode() if exc.response.body else "no body"
+            logger.error("Deepgram rejected connection: %s %s", exc.response.status_code, body)
+            raise
         self._receive_task = asyncio.create_task(self._receive_loop())
         logger.info("Deepgram connected")
 
