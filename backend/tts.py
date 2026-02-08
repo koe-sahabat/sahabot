@@ -1,6 +1,6 @@
-"""Text-to-speech via Deepgram Aura."""
+"""Text-to-speech via Deepgram Aura — streaming interface."""
 
-import io
+from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
 from config import DEEPGRAM_API_KEY, TTS_VOICE
@@ -15,17 +15,14 @@ def _get_client() -> AsyncDeepgramClient:
     return _client
 
 
-async def synthesize(text: str) -> bytes:
-    """Convert a text string to MP3 audio bytes using Deepgram Aura TTS."""
+async def stream_tts(text: str) -> AsyncIterator[bytes]:
+    """Yield audio chunks from Deepgram Aura TTS as they arrive."""
     client = _get_client()
-    buffer = io.BytesIO()
 
     async for chunk in client.speak.v1.audio.generate(text=text, model=TTS_VOICE):
         if isinstance(chunk, bytes):
-            buffer.write(chunk)
+            yield chunk
         elif hasattr(chunk, "read"):
-            buffer.write(chunk.read())
+            yield chunk.read()
         elif hasattr(chunk, "content"):
-            buffer.write(chunk.content)
-
-    return buffer.getvalue()
+            yield chunk.content

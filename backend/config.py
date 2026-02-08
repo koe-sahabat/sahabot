@@ -7,7 +7,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 
 # Groq model — see: https://console.groq.com/docs/models
-LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-specdec")
 
 # Deepgram Aura TTS voice — see: https://developers.deepgram.com/docs/tts-models
 TTS_VOICE = os.getenv("TTS_VOICE", "aura-2-asteria-en")

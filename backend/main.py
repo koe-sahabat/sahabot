@@ -20,7 +20,6 @@ app = FastAPI(title="SahaBot")
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    logger.info("Client WebSocket connected")
 
     messages: list[dict] = []
     transcriber: LiveTranscriber | None = None
@@ -29,7 +28,6 @@ async def websocket_endpoint(ws: WebSocket):
     async def run_pipeline(text: str):
         """Run the LLM → TTS pipeline for a given user utterance."""
         nonlocal pipeline_task
-        logger.info("User said: %s", text)
         messages.append({"role": "user", "content": text})
 
         pipeline = Pipeline(ws, messages)
@@ -37,7 +35,6 @@ async def websocket_endpoint(ws: WebSocket):
 
         messages.append({"role": "assistant", "content": full_response})
         await ws.send_json({"type": "audio_done"})
-        logger.info("Turn complete")
         pipeline_task = None
 
     try:
@@ -62,25 +59,18 @@ async def websocket_endpoint(ws: WebSocket):
             if msg_type == "audio_start":
                 # Wait for any in-flight pipeline before starting a new turn.
                 if pipeline_task:
-                    logger.info("Waiting for previous pipeline to finish")
                     await pipeline_task
                     pipeline_task = None
 
                 # Close any leftover transcriber from a previous turn.
                 if transcriber:
-                    logger.warning("Closing stale transcriber before starting new one")
                     await transcriber.close()
                     transcriber = None
 
-                logger.info("audio_start — opening Deepgram session")
-
                 async def on_speech_end(transcript: str):
                     nonlocal pipeline_task
-                    # Tell the client to stop recording immediately.
                     await ws.send_json({"type": "speech_end"})
-                    # Start the LLM pipeline right away — don't wait for audio_end.
                     if not pipeline_task:
-                        logger.info("UtteranceEnd — starting pipeline early")
                         pipeline_task = asyncio.create_task(run_pipeline(transcript))
 
                 try:
@@ -92,9 +82,7 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_json({"type": "error"})
 
             elif msg_type == "audio_end":
-                logger.info("audio_end received")
                 if not transcriber:
-                    logger.warning("audio_end but no active transcriber")
                     if not pipeline_task:
                         await ws.send_json({"type": "error"})
                     continue
@@ -102,7 +90,6 @@ async def websocket_endpoint(ws: WebSocket):
                 # If pipeline already started (from UtteranceEnd), just clean up
                 # the transcriber and wait for the pipeline to finish.
                 if pipeline_task:
-                    logger.info("Pipeline already running — closing transcriber and awaiting")
                     await transcriber.close()
                     transcriber = None
                     await pipeline_task
@@ -115,14 +102,13 @@ async def websocket_endpoint(ws: WebSocket):
                 transcriber = None
 
                 if not text:
-                    logger.warning("Empty transcript")
                     await ws.send_json({"type": "error"})
                     continue
 
                 await run_pipeline(text)
 
     except WebSocketDisconnect:
-        logger.info("Client disconnected")
+        pass
     except Exception:
         logger.exception("WebSocket error")
     finally:

@@ -37,12 +37,10 @@ class LiveTranscriber:
 
     async def connect(self):
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        logger.info("Connecting to Deepgram...")
         self._ws = await websockets.connect(
             DEEPGRAM_WS_URL, additional_headers=headers
         )
         self._receive_task = asyncio.create_task(self._receive_loop())
-        logger.info("Deepgram live session connected")
 
     async def send_audio(self, chunk: bytes):
         if self._ws and not self._closed:
@@ -68,7 +66,6 @@ class LiveTranscriber:
             except Exception:
                 pass
             self._closed = True
-        logger.info("Final transcript: '%s'", self._final_transcript)
         return self._final_transcript
 
     async def close(self):
@@ -94,13 +91,6 @@ class LiveTranscriber:
                     transcript = alt.get("transcript", "")
                     is_final = data.get("is_final", False)
 
-                    if transcript:
-                        logger.info(
-                            "Deepgram %s: %s",
-                            "FINAL" if is_final else "interim",
-                            transcript,
-                        )
-
                     if transcript and is_final:
                         if self._final_transcript:
                             self._final_transcript += " " + transcript
@@ -108,21 +98,16 @@ class LiveTranscriber:
                             self._final_transcript = transcript
 
                 elif msg_type == "UtteranceEnd":
-                    logger.info("Deepgram UtteranceEnd received")
                     if (
                         self.on_speech_end
                         and not self._speech_end_fired
                         and self._final_transcript
                     ):
                         self._speech_end_fired = True
-                        logger.info("VAD speech-end triggered, transcript so far: '%s'", self._final_transcript)
                         await self.on_speech_end(self._final_transcript)
 
                 elif msg_type == "Error":
                     logger.error("Deepgram error: %s", data)
-
-                elif msg_type == "Metadata":
-                    logger.info("Deepgram metadata: request_id=%s", data.get("request_id"))
 
         except websockets.exceptions.ConnectionClosed as e:
             logger.warning("Deepgram connection closed: code=%s reason=%s", e.code, e.reason)

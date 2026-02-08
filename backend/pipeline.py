@@ -3,6 +3,11 @@
 Streams LLM tokens, splits them into sentences, synthesises each
 sentence concurrently via TTS, and delivers audio chunks in order
 through an asyncio.Queue-based architecture (no polling).
+
+Each sentence gets its own chunk queue.  TTS tasks fill these queues
+concurrently (so sentence 2's TTS can start while sentence 1 is still
+streaming).  The send loop drains them strictly in sentence order,
+forwarding each audio chunk to the WebSocket as it arrives.
 """
 
 import asyncio
@@ -12,7 +17,7 @@ import re
 from fastapi import WebSocket
 
 from llm import stream_tokens
-from tts import synthesize
+from tts import stream_tts
 
 logger = logging.getLogger("sahabot")
 
@@ -76,11 +81,9 @@ class Pipeline:
     def __init__(self, ws: WebSocket, messages: list[dict]):
         self._ws = ws
         self._messages = messages
-        # Queue holds asyncio.Task objects (or _SENTINEL to signal end).
-        # Tasks are enqueued in sentence order; the sender awaits each in
-        # sequence so audio is always delivered in the correct order, while
-        # TTS calls run concurrently.
-        self._tts_queue: asyncio.Queue = asyncio.Queue()
+        # Queue holds per-sentence chunk queues (or _SENTINEL to signal end).
+        # Each chunk queue is an asyncio.Queue filled by a background TTS task.
+        self._sentence_queue: asyncio.Queue = asyncio.Queue()
 
     async def run(self) -> str:
         """Run the full pipeline. Returns the complete LLM response text."""
@@ -101,7 +104,7 @@ class Pipeline:
                 self._enqueue_tts(remainder)
         finally:
             # Signal sender to stop, even if the LLM stream errored.
-            await self._tts_queue.put(_SENTINEL)
+            await self._sentence_queue.put(_SENTINEL)
 
         await sender
         return full_text
@@ -111,17 +114,33 @@ class Pipeline:
     # ------------------------------------------------------------------
 
     def _enqueue_tts(self, sentence: str):
-        task = asyncio.create_task(synthesize(sentence))
-        self._tts_queue.put_nowait(task)
+        chunk_q: asyncio.Queue[bytes | None] = asyncio.Queue()
+        asyncio.create_task(self._fill_chunks(sentence, chunk_q))
+        self._sentence_queue.put_nowait(chunk_q)
+
+    @staticmethod
+    async def _fill_chunks(sentence: str, chunk_q: asyncio.Queue):
+        """Stream TTS chunks into the per-sentence queue."""
+        try:
+            async for chunk in stream_tts(sentence):
+                await chunk_q.put(chunk)
+        except Exception:
+            logger.exception("TTS error for sentence")
+        finally:
+            await chunk_q.put(None)  # end-of-sentence sentinel
 
     async def _send_loop(self):
-        """Await TTS tasks in order and send audio to the WebSocket."""
+        """Drain per-sentence chunk queues in order, sending each chunk."""
         while True:
-            item = await self._tts_queue.get()
+            item = await self._sentence_queue.get()
             if item is _SENTINEL:
                 break
+            # item is a per-sentence chunk queue
             try:
-                audio = await item
-                await self._ws.send_bytes(audio)
+                while True:
+                    chunk = await item.get()
+                    if chunk is None:
+                        break
+                    await self._ws.send_bytes(chunk)
             except Exception:
-                logger.exception("TTS/send error for a sentence — skipping")
+                logger.exception("Send error — skipping sentence")
