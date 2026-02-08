@@ -29,6 +29,62 @@ async def websocket_endpoint(ws: WebSocket):
 
     messages: list[dict] = []
     transcriber: LiveTranscriber | None = None
+    pipeline_task: asyncio.Task | None = None
+
+    async def run_pipeline(text: str):
+        """Run the LLM + TTS pipeline for a given user message."""
+        messages.append({"role": "user", "content": text})
+
+        sentence_buffer = ""
+        pending_tts: list[tuple[asyncio.Task, int]] = []
+        sent_index = 0
+        sentence_index = 0
+
+        async def send_ready_audio():
+            nonlocal sent_index
+            while pending_tts:
+                for i, (task, idx) in enumerate(pending_tts):
+                    if idx == sent_index and task.done():
+                        audio = task.result()
+                        audio_b64 = base64.b64encode(audio).decode("ascii")
+                        await ws.send_json({"type": "audio", "data": audio_b64})
+                        pending_tts.pop(i)
+                        sent_index += 1
+                        break
+                else:
+                    break
+
+        async def on_chunk(chunk: str):
+            nonlocal sentence_buffer, sentence_index
+            sentence_buffer += chunk
+
+            parts = _SENTENCE_SPLIT.split(sentence_buffer)
+            if len(parts) > 1:
+                for part in parts[:-1]:
+                    s = part.strip()
+                    if s:
+                        task = asyncio.create_task(synthesize(s))
+                        pending_tts.append((task, sentence_index))
+                        sentence_index += 1
+                sentence_buffer = parts[-1]
+
+            await send_ready_audio()
+
+        full_response = await stream_response(messages, on_chunk)
+        messages.append({"role": "assistant", "content": full_response})
+
+        # Flush remainder
+        remainder = sentence_buffer.strip()
+        if remainder:
+            task = asyncio.create_task(synthesize(remainder))
+            pending_tts.append((task, sentence_index))
+
+        # Send remaining audio
+        while pending_tts:
+            await asyncio.sleep(0.05)
+            await send_ready_audio()
+
+        await ws.send_json({"type": "audio_done"})
 
     try:
         while True:
@@ -46,8 +102,12 @@ async def websocket_endpoint(ws: WebSocket):
                 msg_type = msg.get("type")
 
                 if msg_type == "audio_start":
-                    async def on_speech_end():
+                    pipeline_task = None
+
+                    async def on_speech_end(transcript: str):
+                        nonlocal pipeline_task
                         await ws.send_json({"type": "speech_end"})
+                        pipeline_task = asyncio.create_task(run_pipeline(transcript))
 
                     transcriber = LiveTranscriber(on_speech_end=on_speech_end)
                     await transcriber.connect()
@@ -56,66 +116,22 @@ async def websocket_endpoint(ws: WebSocket):
                     if not transcriber:
                         continue
 
-                    text = await transcriber.finish()
-                    transcriber = None
+                    if pipeline_task:
+                        # VAD already fired and pipeline started — just clean up
+                        asyncio.create_task(transcriber.close())
+                        transcriber = None
+                        await pipeline_task
+                        pipeline_task = None
+                    else:
+                        # User stopped manually before VAD — fall back to finish()
+                        text = await transcriber.finish()
+                        transcriber = None
 
-                    if not text:
-                        await ws.send_json({"type": "error"})
-                        continue
+                        if not text:
+                            await ws.send_json({"type": "error"})
+                            continue
 
-                    messages.append({"role": "user", "content": text})
-
-                    # LLM + TTS pipeline
-                    sentence_buffer = ""
-                    pending_tts: list[tuple[asyncio.Task, int]] = []
-                    sent_index = 0
-                    sentence_index = 0
-
-                    async def send_ready_audio():
-                        nonlocal sent_index
-                        while pending_tts:
-                            for i, (task, idx) in enumerate(pending_tts):
-                                if idx == sent_index and task.done():
-                                    audio = task.result()
-                                    audio_b64 = base64.b64encode(audio).decode("ascii")
-                                    await ws.send_json({"type": "audio", "data": audio_b64})
-                                    pending_tts.pop(i)
-                                    sent_index += 1
-                                    break
-                            else:
-                                break
-
-                    async def on_chunk(chunk: str):
-                        nonlocal sentence_buffer, sentence_index
-                        sentence_buffer += chunk
-
-                        parts = _SENTENCE_SPLIT.split(sentence_buffer)
-                        if len(parts) > 1:
-                            for part in parts[:-1]:
-                                s = part.strip()
-                                if s:
-                                    task = asyncio.create_task(synthesize(s))
-                                    pending_tts.append((task, sentence_index))
-                                    sentence_index += 1
-                            sentence_buffer = parts[-1]
-
-                        await send_ready_audio()
-
-                    full_response = await stream_response(messages, on_chunk)
-                    messages.append({"role": "assistant", "content": full_response})
-
-                    # Flush remainder
-                    remainder = sentence_buffer.strip()
-                    if remainder:
-                        task = asyncio.create_task(synthesize(remainder))
-                        pending_tts.append((task, sentence_index))
-
-                    # Send remaining audio
-                    while pending_tts:
-                        await asyncio.sleep(0.05)
-                        await send_ready_audio()
-
-                    await ws.send_json({"type": "audio_done"})
+                        await run_pipeline(text)
 
     except WebSocketDisconnect:
         if transcriber:

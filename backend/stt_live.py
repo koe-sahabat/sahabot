@@ -12,17 +12,17 @@ logger = logging.getLogger("sahabot")
 
 DEEPGRAM_WS_URL = (
     "wss://api.deepgram.com/v1/listen"
-    "?model=nova-2"
+    "?model=nova-3"
     "&language=en"
     "&smart_format=true"
     "&interim_results=true"
     "&endpointing=300"
-    "&utterance_end_ms=1000"
+    "&utterance_end_ms=500"
 )
 
 
 class LiveTranscriber:
-    def __init__(self, on_speech_end: Callable[[], Awaitable[None]] | None = None):
+    def __init__(self, on_speech_end: Callable[[str], Awaitable[None]] | None = None):
         self.on_speech_end = on_speech_end
         self._ws = None
         self._receive_task = None
@@ -83,7 +83,7 @@ class LiveTranscriber:
                     if self.on_speech_end and not self._speech_end_fired and self._final_transcript:
                         self._speech_end_fired = True
                         logger.info("VAD triggered")
-                        await self.on_speech_end()
+                        await self.on_speech_end(self._final_transcript)
 
         except websockets.exceptions.ConnectionClosed:
             pass
