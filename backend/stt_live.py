@@ -29,7 +29,9 @@ class LiveTranscriber:
 
     async def connect(self):
         headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        self._ws = await websockets.connect(DEEPGRAM_WS_URL, additional_headers=headers)
+        self._ws = await websockets.connect(
+            DEEPGRAM_WS_URL, additional_headers=headers, proxy=None
+        )
         self._receive_task = asyncio.create_task(self._receive_loop())
 
     async def send_audio(self, chunk: bytes):
